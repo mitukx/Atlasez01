@@ -143,9 +143,14 @@ const structuredData = {
   structuredData={structuredData}
   localeSwitchHrefs={localeSwitchHrefs}
 >
+  {/* 記事のどこまで読んだかを示す帯。装飾なので支援技術からは隠す */}
+  <div class="reading-progress" aria-hidden="true">
+    <div class="reading-progress-bar" data-reading-progress></div>
+  </div>
+
   <div class="container article-layout">
     {/* 左: 記事内目次（デスクトップは固定、モバイルは折り畳み） */}
-    <nav class="article-toc" aria-label={t(locale, "toc")}>
+    <nav class="article-toc" id="article-toc" aria-label={t(locale, "toc")}>
       <details class="toc-details" open>
         <summary>{t(locale, "toc")}</summary>
         <ol class="details-body toc-list">
@@ -197,10 +202,10 @@ const structuredData = {
             </time>
           </span>
         </p>
-        <button
-          type="button"
-          class="bookmark-btn"
-          data-bookmark-toggle
+        {/* 「あとで読む」= これから読むもの / 「読んだ・理解した」= 済んだもの */}
+        <div
+          class="article-actions"
+          data-article-actions
           data-article-id={entry.data.articleId}
           data-locale={locale}
           data-title={entry.data.title}
@@ -213,13 +218,51 @@ const structuredData = {
           data-subject={subjectName}
           data-category={categoryName}
           data-summary={entry.data.summary}
-          data-label-save={t(locale, "saveForLater")}
-          data-label-saved={t(locale, "saved")}
-          aria-pressed="false"
         >
-          <span data-bookmark-icon aria-hidden="true">☆</span>
-          <span data-bookmark-label>{t(locale, "saveForLater")}</span>
-        </button>
+          <button
+            type="button"
+            class="bookmark-btn"
+            data-bookmark-toggle
+            data-label-save={t(locale, "saveForLater")}
+            data-label-saved={t(locale, "saved")}
+            aria-pressed="false"
+          >
+            <span data-bookmark-icon aria-hidden="true">☆</span>
+            <span data-bookmark-label>{t(locale, "saveForLater")}</span>
+          </button>
+          {/*
+            「読んだ」→「理解した」は独立した2つの印ではなく、1つの状態が進む
+            段階。押すと片方が外れるので、独立したボタンに見えないよう
+            ひと続きの選択群として示す。同じ段階をもう一度押すと未記録に戻る。
+          */}
+          <div
+            class="history-group"
+            role="group"
+            aria-label={t(locale, "learningRecord")}
+          >
+            <span class="history-label">{t(locale, "learningRecord")}</span>
+            <div class="history-steps">
+              <button
+                type="button"
+                class="history-step"
+                data-history-toggle="read"
+                aria-pressed="false"
+              >
+                <span aria-hidden="true">✓</span>
+                <span>{t(locale, "markRead")}</span>
+              </button>
+              <button
+                type="button"
+                class="history-step"
+                data-history-toggle="understood"
+                aria-pressed="false"
+              >
+                <span aria-hidden="true">◎</span>
+                <span>{t(locale, "markUnderstood")}</span>
+              </button>
+            </div>
+          </div>
+        </div>
         {
           [...translations.entries()].length > 0 && (
             <p class="translation-info">
@@ -297,6 +340,16 @@ const structuredData = {
           )
         }
       </section>
+
+      {
+        toc.length > 2 && (
+          <p class="back-to-toc">
+            <a href="#article-toc">
+              {locale === "ja" ? "↑ 目次へ戻る" : "↑ Back to contents"}
+            </a>
+          </p>
+        )
+      }
 
       <footer class="article-footer">
         <p>
@@ -403,6 +456,77 @@ const structuredData = {
 </AtlasLayout>
 
 <style>
+  /*
+   * 読み進み具合の帯。画面上端に固定し、記事本文の位置に応じて伸びる。
+   * 高さ 3px の装飾なので、内容は目次の現在地強調（scroll-spy）が担う。
+   */
+  .reading-progress {
+    position: fixed;
+    inset: 0 0 auto 0;
+    z-index: 40;
+    height: 3px;
+    background: transparent;
+    pointer-events: none;
+  }
+  .reading-progress-bar {
+    width: 0;
+    height: 100%;
+    background: var(--accent-primary);
+    transition: width 80ms linear;
+  }
+  [data-pref-motion="reduced"] .reading-progress-bar {
+    transition: none;
+  }
+
+  /*
+   * 学習の記録。2つのボタンを1つの枠に収め、間に区切りを入れて
+   * 「未記録 → 読んだ → 理解した」と進む段階であることを示す。
+   */
+  .history-group {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+  .history-label {
+    color: var(--text-secondary);
+    font-size: calc(0.82rem * var(--text-scale));
+  }
+  /* 2つを等幅の升目に並べる。選ばれるのは常にどちらか一方だけ。 */
+  .history-steps {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px;
+  }
+  .history-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    min-height: var(--touch-target);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--accent-primary);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--accent-primary);
+    font: inherit;
+    font-size: calc(0.88rem * var(--text-scale));
+    cursor: pointer;
+  }
+  .history-step:hover {
+    background: var(--accent-subtle);
+  }
+  .history-step[aria-pressed="true"] {
+    background: var(--accent-primary);
+    color: var(--on-accent);
+    font-weight: 700;
+  }
+
+  .back-to-toc {
+    margin-top: var(--space-4);
+    font-size: calc(0.9rem * var(--text-scale));
+  }
+
   /* 本文カラムを広く取るため、コンテナ幅を広げ左右カラムを絞っている */
   .article-layout {
     display: grid;
@@ -454,8 +578,13 @@ const structuredData = {
     gap: var(--space-1);
     flex-wrap: wrap;
   }
-  .bookmark-btn {
+  .article-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
     margin-top: var(--space-2);
+  }
+  .bookmark-btn {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
@@ -474,6 +603,15 @@ const structuredData = {
   .bookmark-btn[aria-pressed="true"] {
     background: var(--accent-primary);
     color: var(--bg, #fff);
+  }
+  /* 学習の記録は「あとで読む」と役割が違うので、枠線の色で区別する */
+  .history-btn {
+    border-color: var(--border-strong);
+    color: var(--text-secondary);
+  }
+  .history-btn:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
   }
   .translation-info {
     font-size: calc(0.9rem * var(--text-scale));
@@ -566,6 +704,24 @@ const structuredData = {
       display: block;
     }
   }
+  @media (max-width: 767px) {
+    /* 別行立ての数式は画面幅を超えるので、その式だけ横に送れるようにする */
+    .article-body :global(.katex-display) {
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+    /* 記事情報・関連の枠は狭い画面では余白を詰める */
+    .article-aside section {
+      padding-top: var(--space-2);
+    }
+    .article-header h1 {
+      overflow-wrap: break-word;
+    }
+    .bookmark-btn {
+      width: 100%;
+      justify-content: center;
+    }
+  }
   @media (min-width: 1024px) {
     .toc-details {
       border: 0;
@@ -580,6 +736,23 @@ const structuredData = {
 </style>
 
 <script>
+  // 記事本文のどこまで来たかを画面上端の帯で示す
+  const progressBar = document.querySelector<HTMLElement>("[data-reading-progress]");
+  const articleBody = document.querySelector<HTMLElement>(".article-body");
+
+  if (progressBar && articleBody) {
+    const update = () => {
+      const rect = articleBody.getBoundingClientRect();
+      const total = rect.height - window.innerHeight;
+      // 本文が画面より短い記事では帯を出しても意味がないので 0 のままにする
+      const ratio = total <= 0 ? 0 : (-rect.top / total) * 100;
+      progressBar.style.width = `${Math.min(100, Math.max(0, ratio))}%`;
+    };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+  }
+
   // 現在読んでいる見出しを目次で強調する（scroll-spy）
   const links = new Map<string, HTMLAnchorElement>();
   document
@@ -620,35 +793,71 @@ const structuredData = {
 </script>
 
 <script>
-  // 「あとで読む」ボタンの保存状態の反映とトグル
+  // 「あとで読む」と「読んだ・理解した」の状態反映とトグル
   import { toggleBookmark, isBookmarked } from "../../../../../lib/bookmarks";
+  import {
+    toggleHistory,
+    historyStateOf,
+    type HistoryState,
+  } from "../../../../../lib/history";
 
-  const btn = document.querySelector<HTMLButtonElement>("[data-bookmark-toggle]");
-  if (btn) {
-    const d = btn.dataset;
-    const labelEl = btn.querySelector<HTMLElement>("[data-bookmark-label]");
-    const iconEl = btn.querySelector<HTMLElement>("[data-bookmark-icon]");
+  const actions = document.querySelector<HTMLElement>("[data-article-actions]");
+  if (actions) {
+    const d = actions.dataset;
     const articleId = d.articleId ?? "";
-
-    const render = (on: boolean) => {
-      btn.setAttribute("aria-pressed", on ? "true" : "false");
-      if (labelEl) labelEl.textContent = on ? d.labelSaved ?? "" : d.labelSave ?? "";
-      if (iconEl) iconEl.textContent = on ? "★" : "☆";
+    // 3つのボタンで同じ記事情報を使う
+    const entry = {
+      articleId,
+      locale: d.locale ?? "",
+      title: d.title ?? "",
+      href: d.href ?? "",
+      subject: d.subject ?? "",
+      category: d.category ?? "",
+      summary: d.summary ?? "",
     };
 
-    render(isBookmarked(articleId));
+    const bookmarkBtn = actions.querySelector<HTMLButtonElement>(
+      "[data-bookmark-toggle]",
+    );
+    if (bookmarkBtn) {
+      const bd = bookmarkBtn.dataset;
+      const labelEl =
+        bookmarkBtn.querySelector<HTMLElement>("[data-bookmark-label]");
+      const iconEl =
+        bookmarkBtn.querySelector<HTMLElement>("[data-bookmark-icon]");
 
-    btn.addEventListener("click", () => {
-      const on = toggleBookmark({
-        articleId,
-        locale: d.locale ?? "",
-        title: d.title ?? "",
-        href: d.href ?? "",
-        subject: d.subject ?? "",
-        category: d.category ?? "",
-        summary: d.summary ?? "",
+      const renderBookmark = (on: boolean) => {
+        bookmarkBtn.setAttribute("aria-pressed", on ? "true" : "false");
+        if (labelEl) {
+          labelEl.textContent = on ? (bd.labelSaved ?? "") : (bd.labelSave ?? "");
+        }
+        if (iconEl) iconEl.textContent = on ? "★" : "☆";
+      };
+
+      renderBookmark(isBookmarked(articleId));
+      bookmarkBtn.addEventListener("click", () => {
+        renderBookmark(toggleBookmark(entry));
       });
-      render(on);
-    });
+    }
+
+    const historyButtons = [
+      ...actions.querySelectorAll<HTMLButtonElement>("[data-history-toggle]"),
+    ];
+    const renderHistory = (state: HistoryState | null) => {
+      for (const button of historyButtons) {
+        button.setAttribute(
+          "aria-pressed",
+          String(button.dataset.historyToggle === state),
+        );
+      }
+    };
+
+    renderHistory(historyStateOf(articleId));
+    for (const button of historyButtons) {
+      button.addEventListener("click", () => {
+        const state = button.dataset.historyToggle as HistoryState;
+        renderHistory(toggleHistory(entry, state));
+      });
+    }
   }
 </script>

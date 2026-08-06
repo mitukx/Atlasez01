@@ -1,9 +1,15 @@
 ---
+import { UI_LANGUAGES, UI_LANGUAGE_NAMES } from "../lib/ui-locales";
 /** 表示設定パネル。localStorageに保存し、BaseHeadのinlineスクリプトが復元する */
 interface Props {
   locale?: "ja" | "en";
+  /**
+   * true のとき <details> の外枠を付けず、設定フォームだけを描画する。
+   * ヘッダーの「表示設定」ポップオーバー（SettingsMenu）から使う。
+   */
+  bare?: boolean;
 }
-const { locale = "ja" } = Astro.props;
+const { locale = "ja", bare = false } = Astro.props;
 const L =
   locale === "ja"
     ? {
@@ -50,6 +56,15 @@ const L =
       };
 
 const groups = [
+  {
+    // 記事本文ではなく画面まわりの表示言語。切り替えても URL は変わらない。
+    key: "lang",
+    label: locale === "ja" ? "言語" : "Language",
+    options: UI_LANGUAGES.map((code) => ({
+      value: code,
+      label: UI_LANGUAGE_NAMES[code],
+    })),
+  },
   {
     key: "fontSize",
     label: L.fontSize,
@@ -103,32 +118,60 @@ const groups = [
 ];
 ---
 
-<details class="a11y-settings">
-  <summary>{L.title}</summary>
-  <form class="details-body" data-a11y-form>
-    {
-      groups.map((g) => (
+{
+  bare ? (
+    <form class="a11y-form" data-a11y-form>
+      {groups.map((g) => (
         <fieldset>
           <legend>{g.label}</legend>
-          {g.options.map((o, i) => (
-            <label class="a11y-option">
-              <input
-                type="radio"
-                name={g.key}
-                value={o.value}
-                checked={i === 0}
-              />
-              <span>{o.label}</span>
-            </label>
-          ))}
+          <div class="a11y-options">
+            {g.options.map((o, i) => (
+              <label class="a11y-option">
+                <input
+                  type="radio"
+                  name={g.key}
+                  value={o.value}
+                  checked={i === 0}
+                />
+                <span>{o.label}</span>
+              </label>
+            ))}
+          </div>
         </fieldset>
-      ))
-    }
-    <button type="button" class="button button-secondary" data-a11y-reset>
-      {L.reset}
-    </button>
-  </form>
-</details>
+      ))}
+      <button type="button" class="button button-secondary" data-a11y-reset>
+        {L.reset}
+      </button>
+    </form>
+  ) : (
+    <details class="a11y-settings">
+      <summary>{L.title}</summary>
+      <form class="details-body" data-a11y-form>
+        {groups.map((g) => (
+          <fieldset>
+            <legend>{g.label}</legend>
+            <div class="a11y-options">
+              {g.options.map((o, i) => (
+                <label class="a11y-option">
+                  <input
+                    type="radio"
+                    name={g.key}
+                    value={o.value}
+                    checked={i === 0}
+                  />
+                  <span>{o.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        ))}
+        <button type="button" class="button button-secondary" data-a11y-reset>
+          {L.reset}
+        </button>
+      </form>
+    </details>
+  )
+}
 
 <style>
   .a11y-settings {
@@ -166,6 +209,62 @@ const groups = [
     min-height: auto;
     width: 1.1rem;
     height: 1.1rem;
+  }
+
+  /*
+   * スマホでは項目数（6グループ）に対して縦が伸びすぎるので詰める。
+   * 選択肢の高さは 44px から 36px に落とすが、WCAG 2.5.8 の下限 24px は
+   * 十分に上回るので操作性は保たれる。
+   */
+  @media (max-width: 767px) {
+    .a11y-settings,
+    .a11y-form {
+      font-size: calc(0.85rem * var(--text-scale));
+    }
+    fieldset {
+      display: block;
+      margin-bottom: var(--space-2);
+    }
+    legend {
+      margin-bottom: var(--space-1);
+      font-size: calc(0.8rem * var(--text-scale));
+      color: var(--text-secondary);
+    }
+    /*
+     * 指で押す前提の並べ方。小さな丸を狙わせず、選択肢そのものを
+     * 押せる面（チップ）にして横に3つずつ並べる。
+     */
+    .a11y-options {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-1);
+    }
+    .a11y-option {
+      justify-content: center;
+      gap: 4px;
+      min-height: var(--touch-target);
+      padding: 0 var(--space-1);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      text-align: center;
+      line-height: 1.25;
+    }
+    /* 選ばれている面をはっきり示す */
+    .a11y-option:has(input:checked) {
+      border-color: var(--accent-primary);
+      background: var(--accent-subtle);
+      color: var(--accent-primary);
+      font-weight: 700;
+    }
+    .a11y-option input {
+      width: 0.9rem;
+      height: 0.9rem;
+      flex: 0 0 auto;
+    }
+    /* 選択肢が2つの組は2列にして横幅を稼ぐ */
+    .a11y-options:has(> :nth-child(2):last-child) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 </style>
 
@@ -228,6 +327,8 @@ const groups = [
         }
         apply(next);
         window.dispatchEvent(new CustomEvent("atlasez-theme-change"));
+        // 言語は HTML 属性ではなく文字の差し替えで反映するので別に知らせる
+        window.dispatchEvent(new CustomEvent("atlasez-lang-change"));
       });
       form
         .querySelector("[data-a11y-reset]")
@@ -242,6 +343,7 @@ const groups = [
             .forEach((i) => (i.checked = true));
           apply({});
           window.dispatchEvent(new CustomEvent("atlasez-theme-change"));
+          window.dispatchEvent(new CustomEvent("atlasez-lang-change"));
         });
     },
   );
